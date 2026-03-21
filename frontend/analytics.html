@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics — PadhloAI</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .period-btn {
+      padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+      border: 1.5px solid var(--border); cursor: pointer; transition: var(--transition);
+      color: var(--text-muted); background: transparent;
+    }
+    .period-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 140px; padding: 0 8px; }
+    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+    .bar-fill {
+      width: 100%; border-radius: 6px 6px 0 0;
+      background: linear-gradient(to top, var(--primary), var(--accent2));
+      min-height: 4px; transition: height 1s cubic-bezier(0.4,0,0.2,1);
+      cursor: pointer; position: relative; overflow: visible;
+    }
+    .bar-fill:hover { opacity: 0.85; }
+    .bar-fill::after {
+      content: attr(data-val); position: absolute; top: -22px; left: 50%;
+      transform: translateX(-50%); font-size: 0.65rem; font-weight: 700;
+      color: var(--primary); white-space: nowrap; opacity: 0; transition: var(--transition);
+    }
+    .bar-fill:hover::after { opacity: 1; }
+    .bar-label { font-size: 0.65rem; color: var(--text-light); font-weight: 500; text-align: center; }
+    .streak-day {
+      width: 32px; height: 32px; border-radius: 8px; display: flex;
+      align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700;
+      cursor: pointer; transition: var(--transition);
+    }
+    .streak-day.done { background: rgba(16,185,129,0.15); color: var(--success); }
+    .streak-day.today { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(79,70,229,0.3); }
+    .streak-day.missed { background: rgba(239,68,68,0.1); color: var(--danger); }
+    .streak-day.future { background: rgba(79,70,229,0.04); color: var(--text-light); }
+    .heatmap-cell { width: 14px; height: 14px; border-radius: 3px; cursor: pointer; transition: var(--transition); }
+    .heatmap-cell:hover { transform: scale(1.3); }
+    .result-row {
+      display: flex; align-items: center; gap: 12px; padding: 10px;
+      border-radius: 8px; border: 1px solid var(--border); margin-bottom: 8px;
+      transition: var(--transition);
+    }
+    .result-row:hover { background: rgba(79,70,229,0.03); }
+  </style>
+</head>
+
+<body>
+
+  <script src="js/api.js"></script>
+  <script>requireAuth();</script>
+  <script src="js/layout.js"></script>
+  <script>renderLayout('Analytics', 'analytics.html');</script>
+
+  <main class="main-content page-content">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-size:1.4rem;margin-bottom:4px">Learning Analytics</h2>
+        <p class="text-muted text-sm">Your real progress — pulled live from the database.</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="period-btn" onclick="setPeriod('week',this)">Week</button>
+        <button class="period-btn active" onclick="setPeriod('month',this)">Month</button>
+        <button class="period-btn" onclick="setPeriod('year',this)">Year</button>
+      </div>
+    </div>
+
+    <!-- Top Stats — all from backend -->
+    <div class="grid-4 mb-6">
+      <div class="card" style="background:linear-gradient(135deg,var(--primary),var(--accent2));color:white;border:none">
+        <div style="font-size:1.8rem;font-weight:800;font-family:'Sora',sans-serif" id="stat-docs">—</div>
+        <div style="opacity:0.85;font-size:0.78rem;margin-top:4px">Books Uploaded</div>
+        <div style="opacity:0.7;font-size:0.7rem;margin-top:6px" id="stat-docs-sub">Loading...</div>
+      </div>
+      <div class="card">
+        <div style="font-size:1.8rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--success)" id="stat-avg">—</div>
+        <div class="text-muted text-sm mt-1">Average Score</div>
+        <div style="font-size:0.72rem;margin-top:6px" id="stat-avg-sub">Loading...</div>
+      </div>
+      <div class="card">
+        <div style="font-size:1.8rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--warning)" id="stat-tests">—</div>
+        <div class="text-muted text-sm mt-1">Tests Taken</div>
+        <div style="color:var(--warning);font-size:0.72rem;margin-top:6px" id="stat-tests-sub">Loading...</div>
+      </div>
+      <div class="card">
+        <div style="font-size:1.8rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--accent)" id="stat-best">—</div>
+        <div class="text-muted text-sm mt-1">Best Score</div>
+        <div style="color:var(--accent);font-size:0.72rem;margin-top:6px" id="stat-best-sub">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Score Trend Chart -->
+    <div class="grid-2 mb-6">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h4 style="font-size:0.9rem">📈 Score Trend (Last Tests)</h4>
+          <span class="badge badge-primary" id="chart-count">0 tests</span>
+        </div>
+        <div class="bar-chart" id="score-chart">
+          <div style="width:100%;text-align:center;align-self:center;opacity:0.4;font-size:0.85rem">Loading chart...</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:0 8px;margin-top:4px">
+          <span style="font-size:0.65rem;color:var(--text-light)" id="chart-from">oldest</span>
+          <span style="font-size:0.65rem;color:var(--text-light)">latest</span>
+        </div>
+      </div>
+
+      <!-- All past test results -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h4 style="font-size:0.9rem">📋 Test History</h4>
+          <a href="test.html" style="font-size:0.78rem;color:var(--primary);text-decoration:none">Take new →</a>
+        </div>
+        <div id="test-history" style="max-height:220px;overflow-y:auto">
+          <div style="text-align:center;padding:20px;opacity:0.5;font-size:0.85rem">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Uploaded Documents summary -->
+    <div class="card mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h4 style="font-size:0.9rem">📚 Uploaded Books</h4>
+        <a href="upload.html" style="font-size:0.78rem;color:var(--primary);text-decoration:none">Upload new →</a>
+      </div>
+      <div id="docs-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        <div style="opacity:0.5;font-size:0.85rem;padding:12px">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Activity Heatmap (visual only — based on test dates) -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <h4 style="font-size:0.9rem">📅 Activity Heatmap</h4>
+        <div style="display:flex;align-items:center;gap:8px;font-size:0.72rem;color:var(--text-light)">
+          <span>Less</span>
+          <div style="display:flex;gap:3px">
+            <div style="width:12px;height:12px;border-radius:2px;background:rgba(79,70,229,0.08)"></div>
+            <div style="width:12px;height:12px;border-radius:2px;background:rgba(79,70,229,0.2)"></div>
+            <div style="width:12px;height:12px;border-radius:2px;background:rgba(79,70,229,0.4)"></div>
+            <div style="width:12px;height:12px;border-radius:2px;background:rgba(79,70,229,0.7)"></div>
+            <div style="width:12px;height:12px;border-radius:2px;background:var(--primary)"></div>
+          </div>
+          <span>More</span>
+        </div>
+      </div>
+      <div id="heatmap" style="display:flex;gap:4px;overflow-x:auto;padding:4px 0"></div>
+      <div style="margin-top:12px;font-size:0.72rem;color:var(--text-light)" id="heatmap-summary">Loading...</div>
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    let _allResults = [];
+    let _allDocs = [];
+
+    function setPeriod(p, btn) {
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Filter results by period
+      const now = new Date();
+      const cutoff = new Date(now);
+      if (p === 'week') cutoff.setDate(now.getDate() - 7);
+      else if (p === 'month') cutoff.setMonth(now.getMonth() - 1);
+      else cutoff.setFullYear(now.getFullYear() - 1);
+      const filtered = _allResults.filter(r => new Date(r.taken_at) >= cutoff);
+      renderScoreChart(filtered);
+      showToast(`Showing ${p}ly data`, 'info');
+    }
+
+    function renderScoreChart(results) {
+      const chart = document.getElementById('score-chart');
+      const countBadge = document.getElementById('chart-count');
+      const fromLabel = document.getElementById('chart-from');
+      if (!chart) return;
+
+      if (results.length === 0) {
+        chart.innerHTML = `<div style="width:100%;text-align:center;align-self:center;opacity:0.4;font-size:0.85rem">No test results yet. <a href="test.html" style="color:var(--primary)">Take a test →</a></div>`;
+        if (countBadge) countBadge.textContent = '0 tests';
+        return;
+      }
+
+      // Show last 12 results oldest→newest
+      const sorted = [...results].sort((a,b) => new Date(a.taken_at) - new Date(b.taken_at));
+      const last12 = sorted.slice(-12);
+      const maxScore = 100;
+      if (countBadge) countBadge.textContent = results.length + ' tests';
+      if (fromLabel && last12[0]) {
+        fromLabel.textContent = new Date(last12[0].taken_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' });
+      }
+      chart.innerHTML = last12.map((r, i) => {
+        const pct = r.score;
+        const color = pct >= 80
+          ? 'linear-gradient(to top,var(--success),#34d399)'
+          : pct >= 60
+          ? 'linear-gradient(to top,var(--primary),var(--accent2))'
+          : 'linear-gradient(to top,var(--danger),#f87171)';
+        const date = new Date(r.taken_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' });
+        return `<div class="bar-col">
+          <div class="bar-fill" data-val="${pct}%" style="height:${pct/maxScore*120}px;background:${color}" title="${date}: ${pct}%"></div>
+          <div class="bar-label">${i+1}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderTestHistory(results, docs) {
+      const el = document.getElementById('test-history');
+      if (!el) return;
+      if (results.length === 0) {
+        el.innerHTML = `<div style="text-align:center;padding:20px;opacity:0.5;font-size:0.85rem">No tests taken yet. <a href="test.html" style="color:var(--primary)">Take your first test →</a></div>`;
+        return;
+      }
+      const sorted = [...results].sort((a,b) => new Date(b.taken_at) - new Date(a.taken_at));
+      el.innerHTML = sorted.map(r => {
+        const doc = docs.find(d => d.id === r.document_id);
+        const name = doc ? doc.filename.replace('.pdf','').substring(0,28) : `Doc #${r.document_id}`;
+        const date = new Date(r.taken_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'2-digit' });
+        const badgeClass = r.score >= 75 ? 'badge-success' : r.score >= 50 ? 'badge-warning' : 'badge-danger';
+        return `<div class="result-row">
+          <span style="font-size:1rem">📋</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+            <div style="font-size:0.7rem;color:var(--text-light)">${date} · ${r.total_questions} questions</div>
+          </div>
+          <span class="badge ${badgeClass}">${r.score}%</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderDocsGrid(docs) {
+      const el = document.getElementById('docs-grid');
+      if (!el) return;
+      if (docs.length === 0) {
+        el.innerHTML = `<div style="opacity:0.5;font-size:0.85rem;padding:12px">No books uploaded yet. <a href="upload.html" style="color:var(--primary)">Upload one →</a></div>`;
+        return;
+      }
+      el.innerHTML = docs.map(d => {
+        const emoji = d.doc_type === 'pdf' ? '📕' : '📄';
+        const kb = (d.original_size / 1024).toFixed(0);
+        return `<div class="glass-sm" style="padding:14px;cursor:pointer;transition:var(--transition)"
+          onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+          <div style="font-size:1.6rem;margin-bottom:8px">${emoji}</div>
+          <div style="font-size:0.82rem;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.filename}</div>
+          <div style="font-size:0.7rem;color:var(--text-light);margin-bottom:8px">${kb} KB · ${d.chunk_count} chunks</div>
+          <span class="badge badge-success" style="font-size:0.65rem">✓ Indexed</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderHeatmap(results) {
+      const container = document.getElementById('heatmap');
+      const summary = document.getElementById('heatmap-summary');
+      if (!container) return;
+
+      // Build a date→count map from test results
+      const activityMap = {};
+      results.forEach(r => {
+        const day = r.taken_at.substring(0, 10); // YYYY-MM-DD
+        activityMap[day] = (activityMap[day] || 0) + 1;
+      });
+
+      // Render 14 weeks (98 days) ending today
+      const today = new Date();
+      container.innerHTML = '';
+      for (let w = 13; w >= 0; w--) {
+        const col = document.createElement('div');
+        col.style.cssText = 'display:flex;flex-direction:column;gap:3px';
+        for (let d = 6; d >= 0; d--) {
+          const date = new Date(today);
+          date.setDate(today.getDate() - (w * 7 + d));
+          const key = date.toISOString().substring(0, 10);
+          const count = activityMap[key] || 0;
+          const cell = document.createElement('div');
+          cell.className = 'heatmap-cell';
+          cell.style.background = count === 0
+            ? 'rgba(79,70,229,0.06)'
+            : count === 1 ? 'rgba(79,70,229,0.25)'
+            : count === 2 ? 'rgba(79,70,229,0.5)'
+            : 'var(--primary)';
+          cell.title = `${key}: ${count} test${count !== 1 ? 's' : ''}`;
+          col.appendChild(cell);
+        }
+        container.appendChild(col);
+      }
+
+      if (summary) {
+        const activeDays = Object.keys(activityMap).length;
+        summary.textContent = `${results.length} total test${results.length !== 1 ? 's' : ''} · ${activeDays} active day${activeDays !== 1 ? 's' : ''} in the last 3 months`;
+      }
+    }
+
+    async function loadAnalytics() {
+      try {
+        const [analytics, results, docs] = await Promise.all([
+          AnalyticsAPI.summary(),
+          TestsAPI.results(),
+          DocumentsAPI.list(),
+        ]);
+
+        _allResults = results;
+        _allDocs    = docs;
+
+        // ── Top stat cards ─────────────────────────────────────────
+        const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+        setEl('stat-docs',     analytics.total_documents);
+        setEl('stat-docs-sub', analytics.total_documents === 1 ? '1 book indexed' : `${analytics.total_documents} books indexed`);
+
+        setEl('stat-avg', analytics.average_score > 0 ? analytics.average_score + '%' : '—');
+        const avgSub = document.getElementById('stat-avg-sub');
+        if (avgSub) {
+          avgSub.textContent = analytics.average_score >= 75 ? '🟢 Good performance!' : analytics.average_score > 0 ? '📈 Room to improve' : 'No tests yet';
+          avgSub.style.color = analytics.average_score >= 75 ? 'var(--success)' : 'var(--text-muted)';
+        }
+
+        setEl('stat-tests',     analytics.total_quizzes_taken);
+        setEl('stat-tests-sub', analytics.total_quizzes_taken > 0 ? 'Keep practising!' : 'No tests taken yet');
+
+        setEl('stat-best',     analytics.best_score > 0 ? analytics.best_score + '%' : '—');
+        setEl('stat-best-sub', analytics.best_score >= 90 ? '🏆 Excellent!' : analytics.best_score > 0 ? 'Your personal best' : 'No tests yet');
+
+        // ── Charts & lists ─────────────────────────────────────────
+        renderScoreChart(results);
+        renderTestHistory(results, docs);
+        renderDocsGrid(docs);
+        renderHeatmap(results);
+
+      } catch(err) {
+        // Show error state
+        ['stat-docs','stat-avg','stat-tests','stat-best'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = 'Error';
+        });
+        const chart = document.getElementById('score-chart');
+        if (chart) chart.innerHTML = `<div style="width:100%;text-align:center;align-self:center;color:var(--danger);font-size:0.82rem">⚠️ Could not load data. Is the backend running?</div>`;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAnalytics);
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — PadhloAI</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .welcome-card {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%);
+      border-radius: var(--radius);
+      padding: 32px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+    .welcome-card::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -40px;
+      width: 240px; height: 240px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+    }
+    .welcome-card::after {
+      content: '';
+      position: absolute;
+      bottom: -80px; right: 80px;
+      width: 180px; height: 180px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+    }
+    .welcome-illustration {
+      position: absolute; right: 24px; top: 50%;
+      transform: translateY(-50%);
+      font-size: 4rem;
+      animation: float 3s ease-in-out infinite;
+      opacity: 0.9;
+    }
+    .quick-action {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; padding: 24px 16px;
+      border-radius: var(--radius); cursor: pointer;
+      background: var(--bg-card); backdrop-filter: blur(16px);
+      border: 1px solid var(--border); box-shadow: var(--shadow);
+      transition: var(--transition); text-decoration: none; color: var(--text);
+    }
+    .quick-action:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--primary-light); }
+    .qa-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+    .qa-label { font-size: 0.82rem; font-weight: 600; text-align: center; }
+    .activity-item { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .activity-info { flex: 1; min-width: 0; }
+    .activity-title { font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .activity-time { font-size: 0.72rem; color: var(--text-light); margin-top: 2px; }
+  </style>
+</head>
+
+<body>
+
+  <script src="js/api.js"></script>
+  <script>requireAuth();</script>
+  <script src="js/layout.js"></script>
+  <script>renderLayout('Dashboard', 'dashboard.html');</script>
+
+  <main class="main-content page-content">
+
+    <!-- Welcome — greeting and name filled by JS -->
+    <div class="welcome-card mb-6">
+      <div style="position:relative;z-index:1;max-width:60%">
+        <p id="welcome-greeting" style="opacity:0.8;font-size:0.85rem;margin-bottom:4px">Welcome 👋</p>
+        <h1 id="welcome-name" style="font-family:'Sora',sans-serif;font-size:1.6rem;font-weight:800;margin-bottom:8px">Loading...</h1>
+        <p id="welcome-subtitle" style="opacity:0.8;font-size:0.88rem;line-height:1.5;margin-bottom:20px">Loading your stats...</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <a href="chat.html"
+            style="background:white;color:var(--primary);padding:10px 20px;border-radius:10px;font-weight:700;font-size:0.85rem;text-decoration:none;transition:var(--transition)"
+            onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+            Ask AI Tutor 🤖
+          </a>
+          <a href="test.html"
+            style="background:rgba(255,255,255,0.15);color:white;padding:10px 20px;border-radius:10px;font-weight:600;font-size:0.85rem;text-decoration:none;border:1.5px solid rgba(255,255,255,0.3)">
+            Take Test 📋
+          </a>
+        </div>
+      </div>
+      <div class="welcome-illustration">📚</div>
+    </div>
+
+    <!-- Stats — all populated from backend -->
+    <div class="grid-4 mb-6">
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:rgba(79,70,229,0.1)">📚</div>
+        <div class="stat-value text-gradient" id="stat-docs">—</div>
+        <div class="stat-label">Books Uploaded</div>
+        <div class="progress-bar mt-2"><div class="progress-fill" id="stat-docs-bar" style="width:0"></div></div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:rgba(16,185,129,0.1)">📋</div>
+        <div class="stat-value" style="color:var(--success)" id="stat-tests">—</div>
+        <div class="stat-label">Tests Taken</div>
+        <div class="progress-bar mt-2">
+          <div class="progress-fill" id="stat-tests-bar" style="width:0;background:linear-gradient(90deg,var(--success),#34d399)"></div>
+        </div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:rgba(245,158,11,0.1)">🏆</div>
+        <div class="stat-value" style="color:var(--warning)" id="stat-score">—</div>
+        <div class="stat-label">Avg. Test Score</div>
+        <div class="progress-bar mt-2">
+          <div class="progress-fill" id="stat-score-bar" style="width:0;background:linear-gradient(90deg,var(--warning),#fbbf24)"></div>
+        </div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:rgba(6,182,212,0.1)">🌟</div>
+        <div class="stat-value" style="color:var(--accent)" id="stat-best">—</div>
+        <div class="stat-label">Best Score</div>
+        <div class="progress-bar mt-2">
+          <div class="progress-fill" id="stat-best-bar" style="width:0;background:linear-gradient(90deg,var(--accent),#22d3ee)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="margin-bottom:8px">
+      <h3 style="font-size:1rem;margin-bottom:16px">Quick Actions</h3>
+      <div class="grid-4">
+        <a href="chat.html" class="quick-action">
+          <div class="qa-icon" style="background:linear-gradient(135deg,rgba(79,70,229,0.15),rgba(139,92,246,0.1))">🤖</div>
+          <span class="qa-label">Ask Tutor</span>
+        </a>
+        <a href="notes.html" class="quick-action">
+          <div class="qa-icon" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(52,211,153,0.1))">📝</div>
+          <span class="qa-label">Generate Notes</span>
+        </a>
+        <a href="test.html" class="quick-action">
+          <div class="qa-icon" style="background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(251,191,36,0.1))">📋</div>
+          <span class="qa-label">Take Test</span>
+        </a>
+        <a href="upload.html" class="quick-action">
+          <div class="qa-icon" style="background:linear-gradient(135deg,rgba(6,182,212,0.15),rgba(34,211,238,0.1))">📤</div>
+          <span class="qa-label">Upload Book</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Two columns -->
+    <div class="grid-2 mt-6">
+
+      <!-- Recent Tests from backend -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h3 style="font-size:1rem">Recent Tests</h3>
+          <a href="analytics.html" class="text-sm" style="color:var(--primary);text-decoration:none">View all →</a>
+        </div>
+        <div id="recent-tests-list">
+          <div style="text-align:center;padding:20px;opacity:0.5;font-size:0.85rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Uploaded Documents -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h3 style="font-size:1rem">My Books</h3>
+          <a href="upload.html" class="text-sm" style="color:var(--primary);text-decoration:none">Upload new →</a>
+        </div>
+        <div id="docs-list">
+          <div style="text-align:center;padding:20px;opacity:0.5;font-size:0.85rem">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    // ── Greeting ────────────────────────────────────────────────────
+    function setGreeting() {
+      const hour = new Date().getHours();
+      const greet = hour < 12 ? 'Good Morning 🌅' : hour < 17 ? 'Good Afternoon ☀️' : 'Good Evening 🌙';
+      const el = document.getElementById('welcome-greeting');
+      if (el) el.textContent = greet;
+    }
+
+    // ── Load everything from backend ────────────────────────────────
+    async function loadDashboard() {
+      // Set real username immediately from localStorage (no API call needed)
+      const user = Auth.getUser();
+      const username = user ? user.username : 'Student';
+      const welcomeName = document.getElementById('welcome-name');
+      if (welcomeName) welcomeName.textContent = `Welcome back, ${username}!`;
+      setGreeting();
+
+      try {
+        const [docs, results, analytics] = await Promise.all([
+          DocumentsAPI.list(),
+          TestsAPI.results(),
+          AnalyticsAPI.summary(),
+        ]);
+
+        // ── Stat cards ──────────────────────────────────────────────
+        const statDocs  = document.getElementById('stat-docs');
+        const statTests = document.getElementById('stat-tests');
+        const statScore = document.getElementById('stat-score');
+        const statBest  = document.getElementById('stat-best');
+
+        if (statDocs)  statDocs.textContent  = analytics.total_documents;
+        if (statTests) statTests.textContent = analytics.total_quizzes_taken;
+        if (statScore) statScore.textContent = analytics.average_score > 0 ? analytics.average_score + '%' : '—';
+        if (statBest)  statBest.textContent  = analytics.best_score > 0 ? analytics.best_score + '%' : '—';
+
+        // Animate progress bars based on real values
+        const setBar = (id, pct) => {
+          const el = document.getElementById(id);
+          if (el) setTimeout(() => { el.style.width = Math.min(pct, 100) + '%'; }, 300);
+        };
+        setBar('stat-docs-bar',  Math.min(analytics.total_documents * 10, 100));
+        setBar('stat-tests-bar', Math.min(analytics.total_quizzes_taken * 5, 100));
+        setBar('stat-score-bar', analytics.average_score || 0);
+        setBar('stat-best-bar',  analytics.best_score || 0);
+
+        // ── Welcome subtitle ────────────────────────────────────────
+        const subtitle = document.getElementById('welcome-subtitle');
+        if (subtitle) {
+          if (analytics.total_quizzes_taken > 0) {
+            subtitle.textContent = `You've taken ${analytics.total_quizzes_taken} test${analytics.total_quizzes_taken !== 1 ? 's' : ''}. Avg score: ${analytics.average_score}%. Keep it up!`;
+          } else if (docs.length > 0) {
+            subtitle.textContent = `You have ${docs.length} book${docs.length !== 1 ? 's' : ''} uploaded. Ready to study?`;
+          } else {
+            subtitle.textContent = 'Start by uploading your first textbook. The AI is ready to help!';
+          }
+        }
+
+        // ── Recent tests list ───────────────────────────────────────
+        const testsEl = document.getElementById('recent-tests-list');
+        if (testsEl) {
+          if (results.length === 0) {
+            testsEl.innerHTML = `<div style="text-align:center;padding:20px;opacity:0.5;font-size:0.85rem">No tests taken yet. <a href="test.html" style="color:var(--primary)">Take one now →</a></div>`;
+          } else {
+            testsEl.innerHTML = results.slice(0, 4).map(r => {
+              const doc = docs.find(d => d.id === r.document_id);
+              const docName = doc ? doc.filename.replace('.pdf','').substring(0,30) : `Document #${r.document_id}`;
+              const date = new Date(r.taken_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' });
+              const badgeClass = r.score >= 75 ? 'badge-success' : r.score >= 50 ? 'badge-warning' : 'badge-danger';
+              return `<div class="activity-item">
+                <div class="activity-icon" style="background:rgba(79,70,229,0.1)">📋</div>
+                <div class="activity-info">
+                  <div class="activity-title">${docName}</div>
+                  <div class="activity-time">${date} · ${r.total_questions} questions</div>
+                </div>
+                <span class="badge ${badgeClass}">${r.score}%</span>
+              </div>`;
+            }).join('');
+          }
+        }
+
+        // ── Uploaded docs list ──────────────────────────────────────
+        const docsEl = document.getElementById('docs-list');
+        if (docsEl) {
+          if (docs.length === 0) {
+            docsEl.innerHTML = `<div style="text-align:center;padding:20px;opacity:0.5;font-size:0.85rem">No books yet. <a href="upload.html" style="color:var(--primary)">Upload one →</a></div>`;
+          } else {
+            docsEl.innerHTML = docs.slice(0, 4).map(d => {
+              const emoji = d.doc_type === 'pdf' ? '📕' : '📄';
+              const kb = (d.original_size / 1024).toFixed(0);
+              return `<div class="activity-item">
+                <div class="activity-icon" style="background:rgba(239,68,68,0.1)">${emoji}</div>
+                <div class="activity-info">
+                  <div class="activity-title">${d.filename}</div>
+                  <div class="activity-time">${kb} KB · ${d.chunk_count} chunks indexed</div>
+                </div>
+                <span class="badge badge-success" style="font-size:0.68rem">✓</span>
+              </div>`;
+            }).join('');
+          }
+        }
+
+      } catch(e) {
+        const subtitle = document.getElementById('welcome-subtitle');
+        if (subtitle) subtitle.textContent = 'Could not load stats. Is the backend running?';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDashboard);
+  </script>
+</body>
+
+</html>

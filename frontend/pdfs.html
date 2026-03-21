@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Books — PadhloAI</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .pdf-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    .pdf-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: var(--radius) var(--radius) 0 0;
+      background: linear-gradient(90deg, var(--success), var(--accent));
+      opacity: 0;
+      transition: var(--transition);
+    }
+    .pdf-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+    .pdf-card:hover::before { opacity: 1; }
+    .pdf-icon-wrap {
+      width: 52px; height: 52px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; margin-bottom: 14px; transition: var(--transition);
+    }
+    .pdf-card:hover .pdf-icon-wrap { transform: rotate(-5deg) scale(1.05); }
+    .pdf-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .pdf-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .filter-tab {
+      padding: 7px 16px; border-radius: 99px; font-size: 0.8rem; font-weight: 600;
+      border: 1.5px solid var(--border); cursor: pointer; transition: var(--transition);
+      color: var(--text-muted); background: transparent;
+    }
+    .filter-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .storage-bar { height: 8px; border-radius: 99px; background: rgba(79,70,229,0.1); overflow: hidden; margin: 8px 0; }
+    .storage-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--primary), var(--accent2)); transition: width 1.2s ease; }
+    .list-item {
+      display: flex; align-items: center; gap: 14px; padding: 14px;
+      border-radius: 10px; border: 1px solid var(--border); transition: var(--transition);
+    }
+    .list-item:hover { background: rgba(79,70,229,0.04); border-color: var(--primary-light); transform: translateX(4px); }
+    .view-toggle { display: flex; gap: 4px; background: rgba(79,70,229,0.06); border-radius: 8px; padding: 3px; }
+    .view-btn {
+      padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 0.8rem; transition: var(--transition); background: transparent; color: var(--text-muted);
+    }
+    .view-btn.active { background: white; color: var(--primary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    [data-theme="dark"] .view-btn.active { background: rgba(79,70,229,0.2); }
+
+    /* Confirm dialog */
+    .confirm-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px); z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+    }
+    .confirm-backdrop.show { opacity: 1; pointer-events: all; }
+    .confirm-box {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px; max-width: 380px; width: 90%;
+      box-shadow: var(--shadow-lg); transform: scale(0.95); transition: transform 0.2s ease;
+    }
+    .confirm-backdrop.show .confirm-box { transform: scale(1); }
+  </style>
+</head>
+
+<body>
+  <script src="js/api.js"></script>
+  <script>requireAuth();</script>
+  <script src="js/layout.js"></script>
+  <script>renderLayout('My Books', 'pdfs.html');</script>
+
+  <!-- Confirm Delete Dialog -->
+  <div class="confirm-backdrop" id="confirm-backdrop">
+    <div class="confirm-box">
+      <div style="font-size:2rem;margin-bottom:12px">🗑️</div>
+      <h3 style="font-size:1rem;margin-bottom:8px">Delete this book?</h3>
+      <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:20px;line-height:1.5">
+        This will permanently remove the book and all its indexed chunks from the vector store.
+        Your generated notes and test results will remain.
+      </p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeConfirm()">Cancel</button>
+        <button class="btn btn-danger" id="confirm-delete-btn" onclick="executeDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-content page-content">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-size:1.4rem;margin-bottom:4px">My Books</h2>
+        <p class="text-muted text-sm">Uploaded textbooks indexed and ready for AI tutoring.</p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="search-bar">
+          <input type="text" class="input" placeholder="Search books..." style="width:220px;padding-left:40px"
+            oninput="filterBooks(this.value)">
+        </div>
+        <a href="upload.html" class="btn btn-primary">+ Upload Book</a>
+      </div>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="card mb-6" style="padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:1.4rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--primary)" id="stat-total">—</div>
+            <div style="font-size:0.72rem;color:var(--text-muted)">Books</div>
+          </div>
+          <div>
+            <div style="font-size:1.4rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--success)" id="stat-pdfs">—</div>
+            <div style="font-size:0.72rem;color:var(--text-muted)">PDFs</div>
+          </div>
+          <div>
+            <div style="font-size:1.4rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--accent)" id="stat-chunks">—</div>
+            <div style="font-size:0.72rem;color:var(--text-muted)">Total Chunks</div>
+          </div>
+          <div>
+            <div style="font-size:1.4rem;font-weight:800;font-family:'Sora',sans-serif;color:var(--warning)" id="stat-size">—</div>
+            <div style="font-size:0.72rem;color:var(--text-muted)">Total Size</div>
+          </div>
+        </div>
+        <div style="min-width:180px">
+          <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px">
+            <span>Storage Used</span>
+            <span id="storage-label">—</span>
+          </div>
+          <div class="storage-bar">
+            <div class="storage-fill" id="storage-bar" style="width:0"></div>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-light)" id="storage-sub">Calculating...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters & View Toggle -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="filter-tab active" id="tab-all"   onclick="setFilter('all',this)">All</button>
+        <button class="filter-tab"        id="tab-books" onclick="setFilter('books',this)">📚 Books</button>
+        <button class="filter-tab"        id="tab-notes" onclick="setFilter('notes',this)">📝 Notes</button>
+        <button class="filter-tab"        id="tab-tests" onclick="setFilter('tests',this)">🎯 Tests</button>
+      </div>
+      <div class="view-toggle">
+        <button class="view-btn active" id="grid-btn" onclick="setView('grid',this)">⊞ Grid</button>
+        <button class="view-btn"        id="list-btn" onclick="setView('list',this)">☰ List</button>
+      </div>
+    </div>
+
+    <!-- Grid View -->
+    <div id="grid-view" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">
+      <div style="grid-column:1/-1;text-align:center;padding:60px 20px;opacity:0.5">
+        <div style="font-size:2rem;margin-bottom:12px">⏳</div>
+        <p class="text-sm">Loading your library...</p>
+      </div>
+    </div>
+
+    <!-- List View (hidden) -->
+    <div id="list-view" style="display:none;flex-direction:column;gap:8px"></div>
+
+    <!-- Notes View (hidden) -->
+    <div id="notes-view" style="display:none;flex-direction:column;gap:10px"></div>
+
+    <!-- Tests View (hidden) -->
+    <div id="tests-view" style="display:none;flex-direction:column;gap:10px"></div>
+
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    let allDocs = [];
+    let allResults = [];
+    let allNotes = [];
+    let pendingDeleteId = null;
+    let pendingDeleteEl = null;
+    let currentFilter = 'all';
+
+    // ── Confirm dialog helpers ──────────────────────────────────────
+    function openConfirm(id, el) {
+      pendingDeleteId = id;
+      pendingDeleteEl = el;
+      document.getElementById('confirm-backdrop').classList.add('show');
+    }
+    function closeConfirm() {
+      pendingDeleteId = null;
+      pendingDeleteEl = null;
+      document.getElementById('confirm-backdrop').classList.remove('show');
+    }
+    document.getElementById('confirm-backdrop').addEventListener('click', function(e) {
+      if (e.target === this) closeConfirm();
+    });
+
+    async function executeDelete() {
+      const id = pendingDeleteId;
+      const el = pendingDeleteEl;
+      if (!id || !el) return;
+      const btn = document.getElementById('confirm-delete-btn');
+      btn.textContent = 'Deleting…';
+      btn.disabled = true;
+      try {
+        await DocumentsAPI.delete(id);
+        closeConfirm();
+        el.style.transition = 'all 0.3s ease';
+        el.style.transform  = 'scale(0.85)';
+        el.style.opacity    = '0';
+        setTimeout(() => {
+          el.remove();
+          allDocs = allDocs.filter(d => d.id !== id);
+          updateStats();
+          const remaining = document.querySelectorAll('#grid-view .pdf-card, #list-view .list-item');
+          if (remaining.length === 0) renderView(currentFilter);
+        }, 300);
+        showToast('Book deleted successfully', 'success');
+      } catch (err) {
+        showToast('Delete failed: ' + err.message, 'error');
+      } finally {
+        btn.textContent = 'Delete';
+        btn.disabled = false;
+      }
+    }
+
+    // ── Stats ───────────────────────────────────────────────────────
+    function updateStats() {
+      const totalMB  = allDocs.reduce((s, d) => s + (d.original_size || 0), 0) / 1024 / 1024;
+      const pdfCount = allDocs.filter(d => d.doc_type === 'pdf').length;
+      const chunks   = allDocs.reduce((s, d) => s + (d.chunk_count || 0), 0);
+      const pct      = Math.min((totalMB / 100) * 100, 100);
+
+      document.getElementById('stat-total').textContent  = allDocs.length;
+      document.getElementById('stat-pdfs').textContent   = pdfCount;
+      document.getElementById('stat-chunks').textContent = chunks;
+      document.getElementById('stat-size').textContent   = totalMB < 1
+        ? (totalMB * 1024).toFixed(0) + ' KB' : totalMB.toFixed(1) + ' MB';
+      document.getElementById('storage-label').textContent = totalMB.toFixed(1) + ' MB / 100 MB';
+      document.getElementById('storage-sub').textContent   =
+        pct.toFixed(0) + '% used · ' + (100 - totalMB).toFixed(1) + ' MB free';
+
+      // Tab counts
+      document.getElementById('tab-all').textContent   = `All (${allDocs.length + allNotes.length + allResults.length})`;
+      document.getElementById('tab-books').textContent = `📚 Books (${allDocs.length})`;
+      document.getElementById('tab-notes').textContent = `📝 Notes (${allNotes.length})`;
+      document.getElementById('tab-tests').textContent = `🎯 Tests (${allResults.length})`;
+
+      setTimeout(() => {
+        document.getElementById('storage-bar').style.width = pct.toFixed(1) + '%';
+      }, 300);
+    }
+
+    function fmtSize(bytes) {
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // ── Books (Grid/List) ────────────────────────────────────────────
+    function renderGrid(docs) {
+      const grid = document.getElementById('grid-view');
+      if (!docs.length) {
+        grid.innerHTML = `
+          <div style="grid-column:1/-1;text-align:center;padding:60px 20px;opacity:0.5">
+            <div style="font-size:3rem;margin-bottom:16px">📭</div>
+            <h3>No books uploaded yet</h3>
+            <p class="text-muted text-sm" style="margin:8px 0 16px">Upload your first textbook to get started</p>
+            <a href="upload.html" class="btn btn-primary">+ Upload Book</a>
+          </div>`;
+        return;
+      }
+      grid.innerHTML = docs.map(doc => {
+        const emoji  = doc.doc_type === 'pdf' ? '📗' : '📄';
+        const nameEl = doc.filename.length > 36 ? doc.filename.substring(0, 33) + '…' : doc.filename;
+        return `
+          <div class="pdf-card" data-id="${doc.id}" data-name="${doc.filename.toLowerCase()}">
+            <div class="pdf-icon-wrap" style="background:rgba(16,185,129,0.1)">${emoji}</div>
+            <div style="font-size:0.9rem;font-weight:700;margin-bottom:4px;line-height:1.3"
+                 title="${doc.filename}">${nameEl}</div>
+            <div class="pdf-meta">
+              <span class="badge badge-success" style="font-size:0.65rem">Indexed</span>
+              <span class="badge" style="font-size:0.65rem;background:rgba(6,182,212,0.1);color:var(--accent)">${doc.doc_type.toUpperCase()}</span>
+            </div>
+            <div style="font-size:0.72rem;color:var(--text-light)">${fmtSize(doc.original_size)} · ${doc.chunk_count} chunks</div>
+            <div class="pdf-actions">
+              <button class="btn btn-outline btn-sm" style="flex:1"
+                onclick="chatWithDoc(${doc.id}, '${doc.filename.replace(/'/g,"\\'")}')">
+                💬 Ask AI
+              </button>
+              <button class="btn btn-ghost btn-sm"
+                onclick="openConfirm(${doc.id}, this.closest('.pdf-card'))"
+                title="Delete book">🗑️</button>
+            </div>
+          </div>`;
+      }).join('') + `
+        <div onclick="window.location.href='upload.html'"
+          style="border:2.5px dashed var(--border);border-radius:var(--radius);padding:20px;
+                 display:flex;flex-direction:column;align-items:center;justify-content:center;
+                 gap:10px;cursor:pointer;transition:var(--transition);min-height:180px"
+          onmouseover="this.style.borderColor='var(--primary)';this.style.background='rgba(79,70,229,0.04)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.background=''">
+          <div style="font-size:2rem;opacity:0.3">+</div>
+          <div style="font-size:0.8rem;font-weight:600;color:var(--text-light)">Upload New Book</div>
+        </div>`;
+    }
+
+    function renderList(docs) {
+      const list = document.getElementById('list-view');
+      if (!docs.length) {
+        list.innerHTML = `
+          <div style="text-align:center;padding:60px 20px;opacity:0.5">
+            <div style="font-size:3rem;margin-bottom:16px">📭</div>
+            <p class="text-sm">No books yet. <a href="upload.html" style="color:var(--primary)">Upload one →</a></p>
+          </div>`;
+        return;
+      }
+      list.innerHTML = docs.map(doc => `
+        <div class="list-item" data-id="${doc.id}" data-name="${doc.filename.toLowerCase()}">
+          <div style="font-size:1.3rem;flex-shrink:0">${doc.doc_type === 'pdf' ? '📗' : '📄'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.85rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                 title="${doc.filename}">${doc.filename}</div>
+            <div style="font-size:0.72rem;color:var(--text-light)">${doc.chunk_count} chunks · ${fmtSize(doc.original_size)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <span class="badge badge-success" style="font-size:0.65rem">Indexed</span>
+            <button class="btn btn-outline btn-sm"
+              onclick="chatWithDoc(${doc.id}, '${doc.filename.replace(/'/g,"\\'")}')">💬 Ask AI</button>
+            <button class="btn btn-ghost btn-sm"
+              onclick="openConfirm(${doc.id}, this.closest('.list-item'))"
+              title="Delete">🗑️</button>
+          </div>
+        </div>`).join('');
+    }
+
+    // ── Notes view ───────────────────────────────────────────────────
+    function renderNotes() {
+      const el = document.getElementById('notes-view');
+      if (!allNotes.length) {
+        el.innerHTML = `
+          <div style="text-align:center;padding:60px 20px;opacity:0.5">
+            <div style="font-size:3rem;margin-bottom:16px">📝</div>
+            <h3>No notes generated yet</h3>
+            <p class="text-muted text-sm" style="margin:8px 0 16px">Generate notes from your uploaded books</p>
+            <a href="notes.html" class="btn btn-primary">✨ Go to Notes Generator</a>
+          </div>`;
+        return;
+      }
+      el.innerHTML = allNotes.map(n => {
+        const date = new Date(n.savedAt);
+        const styleEmoji = {brief:'⚡',detailed:'📖',exam:'🎯',visual:'🗺️'}[n.style] || '📝';
+        return `
+          <div style="padding:16px;border-radius:12px;border:1px solid var(--border);transition:var(--transition);background:var(--bg-card)"
+               onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="font-size:1.5rem">${styleEmoji}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.88rem;font-weight:700">${n.title}</div>
+                <div style="font-size:0.72rem;color:var(--text-light)">${n.style} · ${date.toLocaleDateString()}</div>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-outline btn-sm" onclick="previewNote(${n.id})">👁️ View</button>
+                <button class="btn btn-ghost btn-sm" onclick="deleteNote(${n.id},this.closest('div[style]'))" title="Delete">🗑️</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function previewNote(id) {
+      const note = allNotes.find(n => n.id === id);
+      if (!note) return;
+      // Store the note id — notes.html will read it, scroll to library, and open the modal
+      sessionStorage.setItem('open_note_id', String(note.id));
+      window.location.href = 'notes.html';
+    }
+
+    function deleteNote(id, el) {
+      if (!confirm('Delete this note?')) return;
+      NotesAPI.deleteNote(id);
+      allNotes = allNotes.filter(n => n.id !== id);
+      el.style.transition = 'all 0.3s ease';
+      el.style.opacity = '0';
+      setTimeout(() => { el.remove(); updateStats(); if (!allNotes.length) renderNotes(); }, 300);
+      showToast('Note deleted', 'success');
+    }
+
+    // ── Tests view ───────────────────────────────────────────────────
+    function renderTests() {
+      const el = document.getElementById('tests-view');
+      if (!allResults.length) {
+        el.innerHTML = `
+          <div style="text-align:center;padding:60px 20px;opacity:0.5">
+            <div style="font-size:3rem;margin-bottom:16px">🎯</div>
+            <h3>No tests taken yet</h3>
+            <p class="text-muted text-sm" style="margin:8px 0 16px">Generate and take your first MCQ test</p>
+            <a href="test.html" class="btn btn-primary">🚀 Go to Test Generator</a>
+          </div>`;
+        return;
+      }
+      el.innerHTML = allResults.map(r => {
+        const date = new Date(r.taken_at);
+        const badgeCls = r.score >= 75 ? 'badge-success' : r.score >= 50 ? 'badge-warning' : 'badge-danger';
+        const name = r.document_filename || 'Test #' + r.id;
+        return `
+          <div style="display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);transition:var(--transition)"
+               onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="width:48px;height:48px;border-radius:12px;background:rgba(79,70,229,0.08);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">📋</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.88rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                   title="${name}">${name}</div>
+              <div style="font-size:0.72rem;color:var(--text-light)">${r.total_questions} questions · ${date.toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'})}</div>
+            </div>
+            <span class="badge ${badgeCls}" style="font-size:0.8rem;padding:4px 10px">${r.score}%</span>
+          </div>`;
+      }).join('');
+    }
+
+    // ── Filter & view controls ──────────────────────────────────────
+    function setFilter(type, btn) {
+      currentFilter = type;
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      renderView(type);
+    }
+
+    function renderView(type) {
+      // Hide all views first
+      ['grid-view','list-view','notes-view','tests-view'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.display = 'none';
+      });
+
+      const isGrid = document.getElementById('grid-btn').classList.contains('active');
+
+      if (type === 'notes') {
+        document.getElementById('notes-view').style.display = 'flex';
+        renderNotes();
+      } else if (type === 'tests') {
+        document.getElementById('tests-view').style.display = 'flex';
+        renderTests();
+      } else {
+        // 'all' or 'books'
+        const docs = type === 'books' ? allDocs : allDocs;
+        if (isGrid) {
+          document.getElementById('grid-view').style.display = 'grid';
+          renderGrid(docs);
+        } else {
+          document.getElementById('list-view').style.display = 'flex';
+          renderList(docs);
+        }
+      }
+    }
+
+    function setView(view, btn) {
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (currentFilter === 'notes' || currentFilter === 'tests') return; // no grid/list for these
+      if (view === 'list') {
+        document.getElementById('grid-view').style.display = 'none';
+        document.getElementById('list-view').style.display = 'flex';
+        renderList(allDocs);
+      } else {
+        document.getElementById('list-view').style.display = 'none';
+        document.getElementById('grid-view').style.display = 'grid';
+        renderGrid(allDocs);
+      }
+    }
+
+    function filterBooks(query) {
+      const q = query.toLowerCase();
+      document.querySelectorAll('.pdf-card[data-name], .list-item[data-name]').forEach(el => {
+        el.style.display = !q || el.dataset.name.includes(q) ? '' : 'none';
+      });
+    }
+
+    function chatWithDoc(id, name) {
+      window.location.href = `chat.html?doc=${id}`;
+    }
+
+    // ── Load everything ─────────────────────────────────────────────
+    async function loadBooks() {
+      try {
+        allDocs    = await DocumentsAPI.list();
+      } catch (err) {
+        allDocs = [];
+        document.getElementById('grid-view').innerHTML = `
+          <div style="grid-column:1/-1;text-align:center;padding:60px 20px;opacity:0.6">
+            <div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>
+            <p class="text-sm" style="color:var(--danger)">Could not load books. Is the backend running?</p>
+            <button class="btn btn-outline" style="margin-top:12px" onclick="loadBooks()">Retry</button>
+          </div>`;
+      }
+
+      try {
+        allResults = await TestsAPI.results();
+      } catch(_) { allResults = []; }
+
+      // Load saved notes from localStorage
+      allNotes = NotesAPI.getSavedNotes ? NotesAPI.getSavedNotes() : [];
+
+      updateStats();
+      renderGrid(allDocs);
+    }
+
+    document.addEventListener('DOMContentLoaded', loadBooks);
+  </script>
+</body>
+</html>

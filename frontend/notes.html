@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes Generator — PadhloAI</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .notes-preview {
+      background: white; border-radius: var(--radius); padding: 32px;
+      min-height: 500px; box-shadow: var(--shadow); border: 1px solid var(--border);
+      font-size: 0.88rem; line-height: 1.8;
+    }
+    [data-theme="dark"] .notes-preview { background: rgba(20,18,50,0.9); }
+    .notes-h1 { font-family: 'Sora',sans-serif; font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; color: var(--primary); }
+    .notes-h2 { font-family: 'Sora',sans-serif; font-size: 1rem; font-weight: 700; margin: 20px 0 8px; color: var(--text); border-left: 3px solid var(--primary); padding-left: 10px; }
+    .notes-h3 { font-size: 0.88rem; font-weight: 700; margin: 12px 0 4px; color: var(--accent2); }
+    .notes-ul { list-style: none; padding: 0; margin: 6px 0; }
+    .notes-ul li { padding: 3px 0 3px 20px; position: relative; }
+    .notes-ul li::before { content: '→'; position: absolute; left: 0; color: var(--primary); font-weight: 700; }
+    .notes-formula { background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.2); border-radius: 8px; padding: 10px 14px; margin: 8px 0; font-family: monospace; font-size: 0.9rem; color: var(--accent); }
+    .notes-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; background: rgba(16,185,129,0.1); color: var(--success); margin-right: 6px; }
+    .generating-overlay { display: none; position: absolute; inset: 0; background: var(--bg-card); backdrop-filter: blur(8px); border-radius: var(--radius); align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 10; }
+    .generating-overlay.show { display: flex; }
+    .gen-spinner { width: 48px; height: 48px; border: 3px solid rgba(79,70,229,0.15); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .chapter-card { padding: 12px 14px; border-radius: 10px; border: 1.5px solid var(--border); cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 10px; }
+    .chapter-card:hover { border-color: var(--primary); background: rgba(79,70,229,0.04); }
+    .chapter-card.selected { border-color: var(--primary); background: rgba(79,70,229,0.08); }
+    .export-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .ai-notes-content h2 { font-family: 'Sora',sans-serif; font-size: 1rem; font-weight: 700; margin: 18px 0 8px; border-left: 3px solid var(--primary); padding-left: 10px; color: var(--text); }
+    .ai-notes-content h3 { font-size: 0.88rem; font-weight: 700; margin: 10px 0 4px; color: var(--accent2); }
+    .ai-notes-content ul { list-style: none; padding: 0; margin: 6px 0; }
+    .ai-notes-content ul li { padding: 3px 0 3px 20px; position: relative; }
+    .ai-notes-content ul li::before { content: '→'; position: absolute; left: 0; color: var(--primary); font-weight: 700; }
+    .ai-notes-content p { margin: 6px 0; }
+    .ai-notes-content strong { font-weight: 700; }
+    .ai-notes-content code { background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.2); border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 0.88em; color: var(--accent); }
+    .doc-selector-item { padding: 10px 14px; border-radius: 10px; border: 1.5px solid var(--border); cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .doc-selector-item:hover { border-color: var(--primary); background: rgba(79,70,229,0.04); }
+    .doc-selector-item.selected { border-color: var(--primary); background: rgba(79,70,229,0.08); }
+
+    /* PDF print styles — only applied inside the hidden print iframe */
+    @media print {
+      body * { visibility: hidden; }
+      #print-area, #print-area * { visibility: visible; }
+      #print-area { position: fixed; inset: 0; padding: 32px; font-size: 12pt; line-height: 1.7; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Hidden print area — cloned content goes here before window.print() -->
+  <div id="print-area" style="display:none"></div>
+
+  <script src="js/api.js"></script>
+  <script>requireAuth();</script>
+  <script src="js/layout.js"></script>
+  <script>renderLayout('Notes Generator', 'notes.html');</script>
+
+  <main class="main-content page-content">
+    <div style="margin-bottom:24px">
+      <h2 style="font-size:1.4rem;margin-bottom:6px">AI Notes Generator</h2>
+      <p class="text-muted text-sm">Generate structured notes from your uploaded textbooks using Gemini AI.</p>
+    </div>
+
+    <div class="grid-2" style="gap:24px">
+      <!-- Controls -->
+      <div>
+        <!-- Step 1: Pick a document -->
+        <div class="card mb-4">
+          <h4 style="font-size:0.9rem;margin-bottom:14px">📚 Step 1 — Select Your Book</h4>
+          <div id="doc-list-notes">
+            <div style="text-align:center;padding:16px;opacity:0.5;font-size:0.85rem">Loading your books...</div>
+          </div>
+          <div id="no-docs-msg" style="display:none;padding:12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">
+            <p style="font-size:0.82rem;color:var(--warning);margin-bottom:8px">⚠️ No books uploaded yet.</p>
+            <a href="upload.html" class="btn btn-primary btn-sm">📤 Upload a Book First</a>
+          </div>
+        </div>
+
+        <!-- Step 2: Topic / Chapter name -->
+        <div class="card mb-4">
+          <h4 style="font-size:0.9rem;margin-bottom:14px">📝 Step 2 — What to cover?</h4>
+          <div class="form-stack" style="display:flex;flex-direction:column;gap:12px">
+            <div class="input-group">
+              <label class="input-label">Chapter / Topic Name</label>
+              <input type="text" id="chapter-input" class="input"
+                placeholder="e.g. Newton's Laws, Photosynthesis, Quadratic Equations">
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Notes Style</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <label class="chapter-card selected" id="style-brief" onclick="selectStyle('brief')">
+                  <span>⚡</span>
+                  <div><div style="font-size:0.8rem;font-weight:700">Brief</div><div style="font-size:0.68rem;color:var(--text-light)">Key points only</div></div>
+                </label>
+                <label class="chapter-card" id="style-detailed" onclick="selectStyle('detailed')">
+                  <span>📖</span>
+                  <div><div style="font-size:0.8rem;font-weight:700">Detailed</div><div style="font-size:0.68rem;color:var(--text-light)">Full explanations</div></div>
+                </label>
+                <label class="chapter-card" id="style-exam" onclick="selectStyle('exam')">
+                  <span>🎯</span>
+                  <div><div style="font-size:0.8rem;font-weight:700">Exam Ready</div><div style="font-size:0.68rem;color:var(--text-light)">Q&A format</div></div>
+                </label>
+                <label class="chapter-card" id="style-visual" onclick="selectStyle('visual')">
+                  <span>🗺️</span>
+                  <div><div style="font-size:0.8rem;font-weight:700">Visual</div><div style="font-size:0.68rem;color:var(--text-light)">Mind map style</div></div>
+                </label>
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-lg btn-full" id="gen-btn" onclick="generateNotes()">
+              ✨ Generate Notes with Gemini AI
+            </button>
+          </div>
+        </div>
+
+        <!-- Tips -->
+        <div class="glass-sm" style="padding:16px">
+          <div style="font-size:0.8rem;font-weight:700;margin-bottom:8px">💡 Tips</div>
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:6px">
+            <li style="font-size:0.78rem;color:var(--text-muted)">🔹 Notes are generated from your uploaded book using Gemini AI</li>
+            <li style="font-size:0.78rem;color:var(--text-muted)">🔹 Be specific: "Chapter 5: Newton's Laws" works better than just "Physics"</li>
+            <li style="font-size:0.78rem;color:var(--text-muted)">🔹 Rate-limited to 15 req/min on Gemini free tier</li>
+            <li style="font-size:0.78rem;color:var(--text-muted)">🔹 Use "📥 Save as PDF" in the export toolbar after generating</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div>
+        <div class="flex items-center justify-between mb-4">
+          <h4 style="font-size:0.9rem">📄 Generated Notes</h4>
+          <div class="export-btns">
+            <button class="btn btn-outline btn-sm" onclick="copyNotes()" id="copy-btn" disabled>
+              📋 Copy
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="downloadPDF()" id="pdf-btn" disabled>
+              📥 Save as PDF
+            </button>
+          </div>
+        </div>
+
+        <div style="position:relative">
+          <div class="notes-preview" id="notes-preview">
+            <div style="text-align:center;padding:60px 20px;opacity:0.5">
+              <div style="font-size:3rem;margin-bottom:16px;animation:float 3s ease-in-out infinite">📝</div>
+              <h3 style="font-size:1rem;margin-bottom:8px">No Notes Yet</h3>
+              <p class="text-sm text-muted">Select a book, enter a topic, and click "Generate Notes".</p>
+            </div>
+          </div>
+
+          <div class="generating-overlay" id="gen-overlay">
+            <div class="gen-spinner"></div>
+            <div style="text-align:center">
+              <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">Generating with Gemini AI...</div>
+              <div class="text-sm text-muted" id="gen-status">Searching your document...</div>
+            </div>
+            <div class="progress-bar" style="width:200px">
+              <div class="progress-fill" id="gen-bar" style="width:0"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Saved Notes Library -->
+    <div style="margin-top:32px" id="library-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h3 style="font-size:1rem;margin-bottom:2px">📚 Saved Notes Library</h3>
+          <p class="text-muted text-sm">Last 20 notes · stored locally in your browser.</p>
+        </div>
+      </div>
+      <div id="notes-library-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">
+        <div style="text-align:center;padding:40px;opacity:0.4;grid-column:1/-1;font-size:0.85rem">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Note Viewer Modal -->
+    <div id="note-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:9000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:780px;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div>
+            <div style="font-size:1rem;font-weight:700" id="modal-title">Notes</div>
+            <div style="font-size:0.72rem;color:var(--text-muted)" id="modal-meta"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-outline btn-sm" onclick="modalCopy()">📋 Copy</button>
+            <button class="btn btn-primary btn-sm" onclick="modalPrint()">📥 Save PDF</button>
+            <button class="btn btn-ghost btn-sm" onclick="closeNoteModal()" style="font-size:1.1rem;padding:4px 10px">✕</button>
+          </div>
+        </div>
+        <div style="overflow-y:auto;padding:28px;flex:1" id="modal-body"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    let activeDocumentId = null;
+    let activeDocName    = '';
+    let notesStyle       = 'brief';
+    let lastGeneratedText = '';
+    let lastGeneratedTitle = '';
+
+    // ── Load user's uploaded documents ─────────────────────────────
+    async function loadDocs() {
+      const listEl    = document.getElementById('doc-list-notes');
+      const noDocsMsg = document.getElementById('no-docs-msg');
+      try {
+        const docs = await DocumentsAPI.list();
+        if (docs.length === 0) {
+          listEl.style.display    = 'none';
+          noDocsMsg.style.display = 'block';
+          return;
+        }
+        listEl.innerHTML = docs.map((d, i) => {
+          const emoji = d.doc_type === 'pdf' ? '📕' : '📄';
+          if (i === 0) { activeDocumentId = d.id; activeDocName = d.filename; }
+          return `<div class="doc-selector-item ${i===0?'selected':''}" onclick="selectDoc(${d.id},'${d.filename.replace(/'/g,"\\'")}',this)">
+            <span style="font-size:1.2rem">${emoji}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                   title="${d.filename}">${d.filename}</div>
+              <div style="font-size:0.7rem;color:var(--text-light)">${d.chunk_count} chunks indexed</div>
+            </div>
+            ${i===0?'<span style="color:var(--success);font-size:0.8rem">✓</span>':''}
+          </div>`;
+        }).join('');
+      } catch(e) {
+        listEl.innerHTML = `<div style="font-size:0.82rem;color:var(--danger)">⚠️ Could not load books. Is the backend running?</div>`;
+      }
+    }
+
+    function selectDoc(id, filename, el) {
+      activeDocumentId = id;
+      activeDocName    = filename;
+      document.querySelectorAll('.doc-selector-item').forEach(i => {
+        i.classList.remove('selected');
+        const tick = i.querySelector('span[style*="success"]');
+        if (tick) tick.remove();
+      });
+      el.classList.add('selected');
+      el.insertAdjacentHTML('beforeend', '<span style="color:var(--success);font-size:0.8rem">✓</span>');
+    }
+
+    function selectStyle(style) {
+      document.querySelectorAll('[id^="style-"]').forEach(s => s.classList.remove('selected'));
+      document.getElementById(`style-${style}`).classList.add('selected');
+      notesStyle = style;
+    }
+
+    // ── Generate notes ──────────────────────────────────────────────
+    async function generateNotes() {
+      if (!activeDocumentId) { showToast('Please upload a book first', 'error'); return; }
+      const chapterInput = document.getElementById('chapter-input').value.trim();
+      if (!chapterInput) {
+        showToast('Please enter a chapter or topic name', 'error');
+        document.getElementById('chapter-input').focus();
+        return;
+      }
+
+      const overlay  = document.getElementById('gen-overlay');
+      const statusEl = document.getElementById('gen-status');
+      const bar      = document.getElementById('gen-bar');
+      const genBtn   = document.getElementById('gen-btn');
+      overlay.classList.add('show');
+      genBtn.disabled = true;
+
+      // Disable export buttons while generating
+      document.getElementById('copy-btn').disabled = true;
+      document.getElementById('pdf-btn').disabled  = true;
+
+      const stages = [
+        { msg: 'Searching your document...', pct: 20 },
+        { msg: 'Retrieving relevant chunks...', pct: 45 },
+        { msg: 'Generating with Gemini AI...', pct: 70 },
+        { msg: 'Formatting notes...', pct: 90 },
+      ];
+      let stageIdx = 0;
+      const stageTimer = setInterval(() => {
+        if (stageIdx < stages.length) {
+          statusEl.textContent  = stages[stageIdx].msg;
+          bar.style.width       = stages[stageIdx].pct + '%';
+          stageIdx++;
+        }
+      }, 1200);
+
+      try {
+        const data = await NotesAPI.generate(activeDocumentId, chapterInput, notesStyle);
+        clearInterval(stageTimer);
+        bar.style.width = '100%';
+        statusEl.textContent = 'Done!';
+        setTimeout(() => { overlay.classList.remove('show'); bar.style.width = '0'; }, 400);
+
+        lastGeneratedText  = data.answer;
+        lastGeneratedTitle = chapterInput;
+        renderNotesHTML(chapterInput, data.answer, data.sources || []);
+
+        // Save to local notes library
+        NotesAPI.saveNote(chapterInput, notesStyle, data.answer);
+        renderLibrary();
+
+        // Enable export buttons now that we have content
+        document.getElementById('copy-btn').disabled = false;
+        document.getElementById('pdf-btn').disabled  = false;
+
+        showToast('Notes generated! ✨', 'success');
+      } catch(err) {
+        clearInterval(stageTimer);
+        overlay.classList.remove('show');
+        bar.style.width = '0';
+        const msg = err.message.includes('429')
+          ? '⚠️ Gemini rate-limited (15 RPM on free tier). Wait 60s and try again.'
+          : `❌ ${err.message}`;
+        showToast(msg, 'error');
+      }
+      genBtn.disabled = false;
+    }
+
+    // ── Markdown → styled HTML renderer ────────────────────────────
+    function renderMarkdown(text) {
+      let html = text
+        // Escape HTML entities first to prevent XSS in content
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        // Code blocks (restore < > inside them after)
+        .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
+          `<div class="notes-formula" style="white-space:pre-wrap;font-family:monospace;font-size:0.82rem;overflow-x:auto">${code.trim()}</div>`)
+        // H1
+        .replace(/^# (.+)$/gm, '<div class="notes-h1" style="font-size:1.4rem;margin-top:8px">$1</div>')
+        // H2
+        .replace(/^## (.+)$/gm, '<div class="notes-h2">$1</div>')
+        // H3
+        .replace(/^### (.+)$/gm, '<div class="notes-h3">$1</div>')
+        // H4
+        .replace(/^#### (.+)$/gm, '<div style="font-size:0.85rem;font-weight:700;margin:10px 0 4px;color:var(--text)">$1</div>')
+        // Bold
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        // Italic
+        .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+        // Inline code
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        // Table rows — detect markdown table lines
+        .replace(/^\|(.+)\|$/gm, (line) => {
+          if (/^\|[\s\-\|:]+\|$/.test(line)) return ''; // divider row
+          const cells = line.slice(1,-1).split('|').map(c => c.trim());
+          return `<tr>${cells.map(c => `<td style="border:1px solid var(--border);padding:7px 12px;font-size:0.82rem">${c}</td>`).join('')}</tr>`;
+        })
+        // Wrap table rows in table
+        .replace(/(<tr>[\s\S]*?<\/tr>\n?)+/g, m =>
+          `<div style="overflow-x:auto;margin:14px 0"><table style="border-collapse:collapse;width:100%">${m}</table></div>`)
+        // Numbered list
+        .replace(/^(\d+)\. (.+)$/gm,
+          '<li style="padding:4px 0 4px 8px;list-style-type:decimal;margin-left:20px;line-height:1.7">$2</li>')
+        // Unordered list
+        .replace(/^[-*•] (.+)$/gm,
+          '<li style="padding:4px 0 4px 20px;position:relative;line-height:1.7" class="notes-li">$1</li>')
+        // Wrap consecutive li into ul
+        .replace(/(<li[\s\S]*?<\/li>\n?)+/g, m => `<ul class="notes-ul">${m}</ul>`)
+        // Horizontal rule
+        .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:18px 0">')
+        // Formula lines (lines with = and variable-like content not already processed)
+        .replace(/^(?!<)([\w\s\u0391-\u03C9]+\s*=\s*.{3,})$/gm,
+          '<div class="notes-formula">$1</div>')
+        // Double newline → paragraph
+        .replace(/\n{2,}/g, '</p><p style="margin:8px 0">')
+        // Single newline
+        .replace(/\n/g, '<br>');
+      return html;
+    }
+
+    function renderNotesHTML(title, rawText, sources) {
+      const preview = document.getElementById('notes-preview');
+      const html    = renderMarkdown(rawText);
+
+      let sourcesHtml = '';
+      if (sources && sources.length > 0) {
+        const names = [...new Set(sources.map(s => s.document_filename))].join(', ');
+        sourcesHtml = `<div style="margin-top:24px;padding:12px;border-radius:8px;background:rgba(79,70,229,0.06);border-left:3px solid var(--primary);font-size:0.76rem;color:var(--text-muted)">📖 <strong>Source:</strong> ${names}</div>`;
+      }
+
+      preview.innerHTML = `
+        <div class="notes-h1">📝 ${title}</div>
+        <div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
+          <span class="notes-tag">AI Generated</span>
+          <span class="notes-tag" style="background:rgba(79,70,229,0.1);color:var(--primary)">${notesStyle}</span>
+          <span class="notes-tag" style="background:rgba(6,182,212,0.1);color:var(--accent)">Gemini AI</span>
+        </div>
+        <div class="ai-notes-content"><p style="margin:8px 0">${html}</p></div>
+        ${sourcesHtml}`;
+    }
+
+    // ── Copy to clipboard ───────────────────────────────────────────
+    function copyNotes() {
+      if (!lastGeneratedText) { showToast('No notes to copy yet', 'warning'); return; }
+      navigator.clipboard.writeText(lastGeneratedText)
+        .then(()  => showToast('Notes copied to clipboard!', 'success'))
+        .catch(()  => showToast('Could not copy — try selecting text manually', 'error'));
+    }
+
+    // ── Download as PDF (using blob + iframe print) ─────────────────
+    function downloadPDF() {
+      if (!lastGeneratedText) { showToast('Generate notes first', 'warning'); return; }
+
+      const previewEl = document.getElementById('notes-preview');
+
+      // Build a self-contained HTML document for printing
+      const printDoc = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${lastGeneratedTitle || 'Notes'}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Georgia, serif; font-size: 11pt; line-height: 1.8; color: #111;
+           padding: 20mm 18mm; max-width: 210mm; margin: 0 auto; }
+    .notes-h1 { font-family: Arial, sans-serif; font-size: 18pt; color: #4f46e5;
+                margin-bottom: 6pt; font-weight: 800; }
+    .notes-h2 { font-family: Arial, sans-serif; font-size: 13pt; font-weight: 700;
+                border-left: 3pt solid #4f46e5; padding-left: 8pt;
+                margin: 16pt 0 6pt; color: #111; }
+    .notes-h3 { font-size: 11pt; font-weight: 700; margin: 12pt 0 4pt; color: #444; }
+    .notes-formula { background: #f0faff; border: 1pt solid #bae6fd; border-radius: 4pt;
+                     padding: 6pt 10pt; font-family: monospace; color: #0369a1;
+                     white-space: pre-wrap; margin: 6pt 0; }
+    .notes-ul { list-style: none; padding: 0; margin: 4pt 0; }
+    .notes-ul li { padding: 2pt 0 2pt 16pt; position: relative; }
+    .notes-ul li::before { content: "→"; position: absolute; left: 0; color: #4f46e5; }
+    .notes-li::before { content: "→"; position: absolute; left: 0; color: #4f46e5; }
+    .notes-tag { display: none; }
+    code { background: #f0faff; border: 1pt solid #bae6fd; border-radius: 3pt;
+           padding: 1pt 4pt; font-family: monospace; font-size: 9pt; }
+    table { border-collapse: collapse; width: 100%; margin: 10pt 0; }
+    td, th { border: 1pt solid #ccc; padding: 5pt 8pt; font-size: 10pt; }
+    hr { border: none; border-top: 1pt solid #ddd; margin: 14pt 0; }
+    @page { margin: 0; size: A4; }
+  </style>
+</head>
+<body>
+  ${previewEl.innerHTML}
+</body>
+</html>`;
+
+      // Open in new tab so user can print/save-as-PDF cleanly
+      const blob = new Blob([printDoc], { type: 'text/html' });
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      if (win) {
+        win.addEventListener('load', () => { win.print(); URL.revokeObjectURL(url); });
+      } else {
+        // Fallback: trigger inline print
+        const printArea = document.getElementById('print-area');
+        printArea.style.display = 'block';
+        printArea.innerHTML = previewEl.innerHTML;
+        window.print();
+        setTimeout(() => { printArea.style.display = 'none'; printArea.innerHTML = ''; }, 500);
+      }
+
+      // Auto-save to library after download
+      if (lastGeneratedText) {
+        NotesAPI.saveNote(lastGeneratedTitle, notesStyle, lastGeneratedText);
+      }
+
+      showToast('Opening print dialog — choose "Save as PDF" 📄', 'info', 5000);
+    }
+
+
+    // ── Notes Library ──────────────────────────────────────────────
+    let modalNoteText = '', modalNoteTitle = '';
+
+    function renderLibrary() {
+      const grid = document.getElementById('notes-library-grid');
+      const notes = NotesAPI.getSavedNotes();
+      if (!notes.length) {
+        grid.innerHTML = '<div style="text-align:center;padding:40px;opacity:0.4;grid-column:1/-1;font-size:0.85rem">📭 No saved notes yet. Generate some above!</div>';
+        return;
+      }
+      const emojiMap = { brief:'⚡', detailed:'📖', exam:'🎯', visual:'🗺️' };
+      const colorMap = { brief:'rgba(79,70,229,0.08)', detailed:'rgba(16,185,129,0.08)', exam:'rgba(245,158,11,0.08)', visual:'rgba(6,182,212,0.08)' };
+      grid.innerHTML = notes.map(n => {
+        const date = new Date(n.savedAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+        const preview = (n.content||'').replace(/[#*`\[\]]/g,'').trim().substring(0,90) + '…';
+        return `
+          <div class="note-card" style="padding:18px;display:flex;flex-direction:column;gap:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <div style="width:38px;height:38px;border-radius:10px;background:${colorMap[n.style]||'rgba(79,70,229,0.08)'};display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0">${emojiMap[n.style]||'📝'}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.88rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${n.title}">${n.title}</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px">${n.style} · ${date}</div>
+              </div>
+            </div>
+            <div style="font-size:0.76rem;color:var(--text-muted);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${preview}</div>
+            <div style="display:flex;gap:6px;margin-top:2px">
+              <button class="btn btn-primary btn-sm" style="flex:1;font-size:0.78rem" onclick="openNoteModal(${n.id})">👁 View</button>
+              <button class="btn btn-outline btn-sm" style="font-size:0.78rem" onclick="printSavedNote(${n.id})" title="Save as PDF">📥</button>
+              <button class="btn btn-ghost btn-sm" style="font-size:0.78rem;color:var(--danger)" onclick="deleteNote(${n.id})" title="Delete">🗑️</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function openNoteModal(id) {
+      const n = NotesAPI.getSavedNotes().find(x => x.id === id);
+      if (!n) { showToast('Note not found', 'error'); return; }
+      modalNoteText  = n.content;
+      modalNoteTitle = n.title;
+      const date = new Date(n.savedAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+      document.getElementById('modal-title').textContent = '📝 ' + n.title;
+      document.getElementById('modal-meta').textContent  = (n.style||'brief') + ' · saved ' + date;
+      document.getElementById('modal-body').innerHTML    =
+        '<div class="ai-notes-content"><p style="margin:8px 0">' + renderMarkdown(n.content) + '</p></div>';
+      const b = document.getElementById('note-modal-backdrop');
+      b.style.display = 'flex';
+      b.onclick = e => { if (e.target === b) closeNoteModal(); };
+    }
+
+    function closeNoteModal() {
+      document.getElementById('note-modal-backdrop').style.display = 'none';
+      modalNoteText = '';
+    }
+
+    function modalCopy() {
+      if (!modalNoteText) return;
+      navigator.clipboard.writeText(modalNoteText)
+        .then(() => showToast('Copied!', 'success'))
+        .catch(() => showToast('Copy failed', 'error'));
+    }
+
+    function modalPrint() { _printNote(modalNoteTitle, document.getElementById('modal-body').innerHTML); }
+
+    function printSavedNote(id) {
+      const n = NotesAPI.getSavedNotes().find(x => x.id === id);
+      if (!n) return;
+      _printNote(n.title, '<div class="ai-notes-content"><p>' + renderMarkdown(n.content) + '</p></div>');
+    }
+
+    function _printNote(title, bodyHtml) {
+      const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title>
+<style>*{box-sizing:border-box}body{font-family:Georgia,serif;font-size:11pt;line-height:1.8;color:#111;padding:20mm 18mm}
+h2{font-family:Arial,sans-serif;font-size:13pt;font-weight:700;border-left:3pt solid #4f46e5;padding-left:8pt;margin:14pt 0 6pt}
+h3{font-size:11pt;font-weight:700;margin:10pt 0 4pt;color:#444}ul{list-style:none;padding:0;margin:4pt 0}
+li{padding:2pt 0 2pt 16pt;position:relative}li::before{content:"→";position:absolute;left:0;color:#4f46e5}
+code{background:#f0faff;border:1pt solid #bae6fd;border-radius:3pt;padding:1pt 4pt;font-family:monospace;font-size:9pt}
+.notes-tag{display:none}table{border-collapse:collapse;width:100%}td,th{border:1pt solid #ccc;padding:5pt 8pt}
+@page{margin:0;size:A4}</style></head><body>${bodyHtml}</body></html>`;
+      const win = window.open(URL.createObjectURL(new Blob([doc],{type:'text/html'})),'_blank');
+      if (win) win.addEventListener('load', () => win.print());
+      showToast('Choose "Save as PDF" in print dialog 📄', 'info', 5000);
+    }
+
+    function deleteNote(id) {
+      if (!confirm('Delete this note?')) return;
+      NotesAPI.deleteNote(id);
+      renderLibrary();
+      showToast('Note deleted', 'success');
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeNoteModal(); });
+
+    // ── Handle preview from pdfs.html "View" button ─────────────────
+    // pdfs.html stores the note id in sessionStorage('open_note_id')
+    function checkSessionPreview() {
+      const noteId = sessionStorage.getItem('open_note_id');
+      if (noteId) {
+        sessionStorage.removeItem('open_note_id');
+        // Scroll to library and open the modal
+        setTimeout(() => {
+          document.getElementById('library-section').scrollIntoView({ behavior: 'smooth' });
+          openNoteModal(parseInt(noteId));
+        }, 400);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => { loadDocs(); renderLibrary(); checkSessionPreview(); });
+  </script>
+</body>
+</html>
