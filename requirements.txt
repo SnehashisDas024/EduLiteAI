@@ -1,0 +1,43 @@
+# PadhloAI - Backend Requirements
+# CPU Bottleneck Fix: removed sentence-transformers+PyPDF2, added fastembed+pymupdf+langchain
+
+# --- Web Framework ---
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+
+# --- Database / ORM ---
+sqlalchemy==2.0.30
+
+# --- Data Validation ---
+pydantic[email]==2.7.1
+pydantic-settings==2.3.0
+
+# --- Auth ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.9
+
+# --- HTTP Client ---
+httpx==0.27.0
+
+# --- PDF Parsing (C-based, replaces PyPDF2) ---
+pymupdf>=1.24.0
+
+# --- Vector DB ---
+chromadb==0.5.3
+
+# --- Embeddings: LOCAL/CPU-optimised (replaces sentence-transformers+PyTorch) ---
+fastembed>=0.3.6
+
+# --- LangChain (text splitting + FastEmbed wrapper) ---
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.6
+
+# --- Google AI ---
+google-generativeai==0.7.2
+
+# --- Utilities ---
+tenacity==8.3.0
+python-dotenv==1.0.1
